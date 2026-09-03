@@ -226,9 +226,8 @@ export function PlatformProvider({
       setUser(restoredUser);
 
       /*
-       * Demo mode uses simulated telemetry.
-       * Real mode will later use Google Sheets /
-       * Google Apps Script.
+       * DEMO = simulated telemetry
+       * REAL = Google Sheets / Apps Script telemetry
        */
       setSimulationEnabled(
         restoredUser.mode === "DEMO",
@@ -262,6 +261,85 @@ export function PlatformProvider({
       cancelled = true;
     };
   }, []);
+
+  /*
+   * ============================================================
+   * REAL PROTOTYPE — GOOGLE SHEETS AUTO REFRESH
+   * ============================================================
+   *
+   * In REAL mode, fetch the latest sensor data every 5 seconds.
+   *
+   * Physical helmet:
+   *   Helmet 01 / W-001
+   *
+   * Data path:
+   *   Physical Helmet
+   *        ↓
+   *   Google Sheet
+   *        ↓
+   *   Google Apps Script
+   *        ↓
+   *   dataService.getSnapshot()
+   *        ↓
+   *   Dashboard
+   *
+   * DEMO mode is NOT affected by this polling loop.
+   */
+  useEffect(() => {
+    if (user?.mode !== "REAL") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshRealData = async () => {
+      try {
+        const next =
+          await dataService.getSnapshot();
+
+        if (cancelled) {
+          return;
+        }
+
+        setSnapshot(next);
+
+        setLastDeviceSync(
+          new Date().toLocaleTimeString(
+            [],
+            {
+              hour12: false,
+            },
+          ),
+        );
+      } catch (error) {
+        console.error(
+          "Real prototype data refresh failed:",
+          error,
+        );
+      }
+    };
+
+    /*
+     * Fetch immediately after entering REAL mode.
+     */
+    void refreshRealData();
+
+    /*
+     * Then refresh every 5 seconds.
+     */
+    const timer =
+      window.setInterval(
+        () => {
+          void refreshRealData();
+        },
+        5000,
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user?.mode]);
 
   /*
    * Demo-mode simulated telemetry.
@@ -312,6 +390,9 @@ export function PlatformProvider({
 
   /*
    * Poll existing wired devices.
+   *
+   * This remains separate from the Google Sheets
+   * REAL prototype polling above.
    */
   useEffect(() => {
     if (!liveBindings.length) {
@@ -435,7 +516,7 @@ export function PlatformProvider({
 
       /*
        * DEMO = simulated telemetry
-       * REAL = simulation disabled
+       * REAL = Google Sheets telemetry
        */
       setSimulationEnabled(
         nextUser.mode === "DEMO",
